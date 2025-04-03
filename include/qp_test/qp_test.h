@@ -15,14 +15,14 @@
 #include <Eigen/Sparse>
 
 #define N_ 5
-#define K_ 3
+#define K_ 4
 #define T_ 2
 
 namespace minimum_snap {
 
 class QpTest {
 public:
-  QpTest(){};
+  QpTest() { max_v_ = 0.6; };
   ~QpTest(){};
   void SolverPro();
 
@@ -30,37 +30,30 @@ public:
 
   void SolverMerage();
 
+  std::vector<double> GetTimeDef(const std::vector<double> &x_vec,
+                                 const std::vector<double> &y_vec);
   /**
    * @brief 求阶乘函数
    */
   double NFactorial(const int &n);
 
   /**
-   * @brief 获取N次多项式第i行的K阶导数的系数  dk(X^/N)/dt = N!/(N-K)!
-   * @param i  行
-   * @param k  K阶导数
-   * @param N N次多项式
+   * @brief 获取n次项的k阶导数的系数 dk(t^N)/dt
+   * @param n n次项系数
+   * @param k k阶多项式
    * @return
    */
-  double GetRowCoefficient(const int &i, const int &k, const int &N);
+  double GetKCoefficient(const int &n, const int &k);
 
   /**
-   * @brief    N次多项式K阶导数系数的矩阵
+   * @brief    N次多项式K阶导数系数的矩阵 --> [a0,a1,a2,a3....an]
    * @param N  N次多项式
    * @param k  k阶导数
+   * @param t  当前点在当前段的时间
    * @return
    */
-  Eigen::MatrixXd GetDerivativeMatrix(const int &N, const int &k);
-
-  /**
-   * @brief    N次多项式K阶导数系数的矩阵
-   * @param N  N次多项式
-   * @param k  k阶导数
-   * @return
-   */
-  Eigen::MatrixXd GetDerivativeMatrix(const double &t, const int &N,
-                                      const int &k);
-
+  Eigen::MatrixXd GetDerivativeMatrix(const int &N, const int &k,
+                                      const double &t = 1);
   /**
    * @brief  获取Q矩阵
    * @param n N次多项式
@@ -80,30 +73,27 @@ public:
   Eigen::MatrixXd GetMerageQMatrix(const int &pose_num, const int &n,
                                    const int &k);
 
-  /**
-   * @brief    1. 设置固定点约束 --- 位置 速度 加速度 jerk
-   * @param n    N次多项式
-   * @param k    k阶导数
-   * @param t    规划时间
-   * @param index [-1] start , [0] mid , [1] end
-   * @return
-   */
-  Eigen::MatrixXd GetFixedPointConstraintMatrix(const int &n, const int &k,
-                                                const double &t,
-                                                const int &index = 0);
+  Eigen::Matrix<double, Eigen::Dynamic, 1>
+  GetMerageUMatrix(const std::vector<double> &vec, const double &start_vel,
+                   const double &start_acc);
 
   /**
    * 连续性约束   两条连续的轨迹起点和终点的jerk相同
-   * @param n
+   * @brief    微分约束 ：N-2 段，每一段的起点终点固定 --> (N-2)
+   * @brief    连续性约束(N-2)个中间点每个点需要满足,x , v，a连续 --> 3(N-2)
+   * @brief    边界点约束x, v，a已知3*2
+   * @brief    (N-2) + 3(N-2) + 4 = 4N -2
+   * @param n  交界处n阶多项式k阶连续
    * @param k
-   * @param t
-   * @param index
+   * @param t 每一段的时间
    * @return
    */
-  Eigen::MatrixXd GetMerageAMatrix(const int &n, const int &k, const double &t,
-                                   const int &index = 0);
+  Eigen::MatrixXd GetMerageAMatrix(const int &n, const int &k,
+                                   const std::vector<double> &t);
 
 public:
+  int constraint_num_;
+  double max_v_;
   double T; //时间
 };
 
