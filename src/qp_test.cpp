@@ -363,4 +363,91 @@ void QpTest::SolverMerage() {
   auto solution = solver.getSolution();
   ROS_INFO_STREAM("[solver] : " << std::endl << solution);
 }
+
+Eigen::VectorXd QpTest::SolverMerage(const std::vector<double> &vec,
+                                     const std::vector<double> &t_def_vec) {
+
+  constraint_num_ = 4 * vec.size() - 2;
+  // todo 目标函数
+  Eigen::MatrixXd merageQMatrix = GetMerageQMatrix(vec.size(), N_, K_);
+
+  Eigen::Matrix<double, Eigen::Dynamic, 1> merage_g(t_def_vec.size() *
+                                                    (N_ + 1));
+  merage_g.setZero();
+  ROS_INFO_STREAM("[merage Q] : " << std::endl << merageQMatrix);
+  // todo 微分约束矩阵和上下限  --- 经过指定点
+  auto merageAMartrix = GetMerageAMatrix(N_, 3, t_def_vec);
+  ROS_INFO_STREAM("[merage_A] : \n" << merageAMartrix);
+
+  // todo 创建osqp求解器
+  OsqpEigen::Solver solver;
+  solver.settings()->setVerbosity(true);
+  solver.data()->setNumberOfConstraints(merageAMartrix.rows()); // todo A Row
+  solver.data()->setNumberOfVariables(merageAMartrix.cols());   // todo A Col
+
+  // todo 设置H矩阵
+  Eigen::SparseMatrix<double> H_hessian = merageQMatrix.sparseView();
+  solver.data()->setHessianMatrix(H_hessian);
+  solver.data()->setGradient(merage_g);
+
+  // todo 约束条件和上下界
+  Eigen::SparseMatrix<double> A_sparase = merageAMartrix.sparseView();
+  auto merage_u = GetMerageUMatrix(vec, 0.5, 0);
+  auto merage_l = merage_u;
+  ROS_INFO_STREAM("merage_u : \n" << merage_u);
+  solver.data()->setLinearConstraintsMatrix(A_sparase);
+  solver.data()->setLowerBound(merage_u);
+  solver.data()->setUpperBound(merage_l);
+
+  if (!solver.initSolver()) {
+    ROS_ERROR_STREAM("[Solver] : init failed");
+    return Eigen::VectorXd();
+  }
+
+  if (!solver.solve()) {
+    ROS_ERROR_STREAM("[Solver] : solver failed");
+    return Eigen::VectorXd();
+  }
+
+  // 检查并输出结果
+  if (solver.getSolution().hasNaN()) {
+    std::cerr << "Solution contains NaN or infinite values!" << std::endl;
+    return Eigen::VectorXd();
+  }
+
+  auto solution = solver.getSolution();
+  ROS_INFO_STREAM("[solver] : " << std::endl << solution);
+  return solution;
+}
+
+nav_msgs::Path QpTest::SolverMinimumSnap(const std::vector<double> &x_vec,
+                                         const std::vector<double> &y_vec) {
+  // todo  x,y解耦分别求解关于t的函数，再去结合同一时刻的求解xy坐标以及航向
+  auto t_def_vec = GetTimeDef(x_vec, y_vec);
+  auto x_solution = SolverMerage(x_vec, t_def_vec);
+  auto y_solution = SolverMerage(y_vec, t_def_vec);
+
+  ROS_INFO_STREAM("X_SOLUTION : \n" << x_solution);
+  ROS_INFO_STREAM("Y_SOLUTION : \n" << y_solution);
+  // todo 将每一段的系数整理
+  std::vector<Eigen::Matrix<double, Eigen::Dynamic, 1>> x_constraint_vec,
+      y_constraint_vec;
+
+  for (int i = 0; i < t_def_vec.size(); i++) {
+
+    x_constraint_vec.push_back(x_solution.segment(i * (N_ + 1), N_ + 1));
+    y_constraint_vec.push_back(y_solution.segment(i * (N_ + 1), N_ + 1));
+  }
+
+  for (const auto &x_constraint : x_constraint_vec) {
+    ROS_INFO_STREAM("x : \n" << x_constraint);
+  }
+
+  for (const auto &y_constraint : y_constraint_vec) {
+    ROS_INFO_STREAM("y : \n" << y_constraint);
+  }
+
+  return nav_msgs::Path();
+}
+
 }

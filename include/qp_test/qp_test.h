@@ -10,6 +10,8 @@
 #include "osqp/osqp.h"
 // eigen
 #include "geometry_msgs/Point.h"
+#include "geometry_msgs/PoseStamped.h"
+#include "nav_msgs/Path.h"
 #include "ros/ros.h"
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
@@ -23,12 +25,20 @@ namespace minimum_snap {
 class QpTest {
 public:
   QpTest() { max_v_ = 0.6; };
+
   ~QpTest(){};
+
+  nav_msgs::Path SolverMinimumSnap(const std::vector<double> &x_vec,
+                                   const std::vector<double> &y_vec);
+
   void SolverPro();
 
   void Solver();
 
   void SolverMerage();
+
+  Eigen::VectorXd SolverMerage(const std::vector<double> &vec,
+                               const std::vector<double> &t_def_vec);
 
   std::vector<double> GetTimeDef(const std::vector<double> &x_vec,
                                  const std::vector<double> &y_vec);

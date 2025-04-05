@@ -9,9 +9,9 @@ find_package(catkin REQUIRED COMPONENTS
 # 查找 Eigen 库
 find_package(Eigen3)
 find_package(OsqpEigen REQUIRED)
-if(TARGET OsqpEigen::OsqpEigen)
+if (TARGET OsqpEigen::OsqpEigen)
     message(STATUS "*** OsqpEigen found ***")
-endif()
+endif ()
 
 
 catkin_package(
@@ -27,7 +27,7 @@ include_directories(
 )
 
 
-add_executable(${PROJECT_NAME}_node  src/qp_test_node.cpp src/qp_test.cpp)
+add_executable(${PROJECT_NAME}_node src/qp_test_node.cpp src/qp_test.cpp src/ContinuousTimeSeries.cpp)
 
 target_link_libraries(${PROJECT_NAME}_node
         PUBLIC
