@@ -16,6 +16,9 @@
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
 
+#include "qp_test/ContinuousTimeSeries.h"
+#include "tf/tf.h"
+
 #define N_ 5
 #define K_ 4
 #define T_ 2
@@ -64,6 +67,16 @@ public:
    */
   Eigen::MatrixXd GetDerivativeMatrix(const int &N, const int &k,
                                       const double &t = 1);
+  /**
+   * @brief  求解矩阵
+   * @param coefficient 矩阵系数
+   * @param k  k阶导数
+   * @param t 时间
+   * @return
+
+   */
+  double SolverMatrix(Eigen::Matrix<double, Eigen::Dynamic, 1>coefficient, const int &k, const double &t);
+
   /**
    * @brief  获取Q矩阵
    * @param n N次多项式

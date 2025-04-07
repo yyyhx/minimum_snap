@@ -24,11 +24,14 @@ public:
    */
   std::pair<int, double> getSegmentSeries(const double &continuous_t);
 
+  double getTotalT();
+
 private:
   std::vector<Eigen::Matrix<double, Eigen::Dynamic, 1>> x_series_;
   std::vector<Eigen::Matrix<double, Eigen::Dynamic, 1>> y_series_;
   std::vector<double> segment_t_series_; // todo 各段轨迹的耗时
   std::vector<double>
       continous_t_series_; // todo 将各段轨迹整合为起点为原点的时间序列
+  double total_t_;
 };
 }

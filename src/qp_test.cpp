@@ -11,7 +11,6 @@ std::vector<double> QpTest::GetTimeDef(const std::vector<double> &x_vec,
   for (int i = 0; i < x_vec.size() - 1; i++) {
     auto dist = hypot(x_vec[i + 1] - x_vec[i], y_vec[i + 1] - y_vec[i]);
     t_vec.push_back(dist / max_v_);
-    ROS_INFO_STREAM("time_i : " << t_vec[i]);
   }
   return t_vec;
 }
@@ -60,6 +59,19 @@ Eigen::MatrixXd QpTest::GetDerivativeMatrix(const int &n, const int &k,
   return derivative_matrix;
 }
 
+double
+QpTest::SolverMatrix(Eigen::Matrix<double, Eigen::Dynamic, 1> coefficient,
+                     const int &k, const double &t) {
+  int n = coefficient.size() - 1;
+
+  auto derivative_matrix = GetDerivativeMatrix(n, k, t);
+  double valus = 0;
+  for (int i = 0; i < coefficient.size(); i++) {
+    valus += coefficient(i, 0) * derivative_matrix(i, 0);
+  }
+  return valus;
+};
+
 Eigen::MatrixXd QpTest::GetQMatrix(const int &n, const int &k) {
   auto derivative_matrix = GetDerivativeMatrix(n, k);
   Eigen::MatrixXd Q_matrix = derivative_matrix * derivative_matrix.transpose();
@@ -73,8 +85,6 @@ Eigen::MatrixXd QpTest::GetQMatrix(const int &n, const int &k) {
       Q_matrix(i, j) = value / (i + j - 2 * k + 1);
     }
   }
-
-  ROS_WARN_STREAM("[Q_Matrix] : " << std::endl << Q_matrix);
   return Q_matrix;
 }
 
@@ -85,6 +95,7 @@ Eigen::MatrixXd QpTest::GetMerageQMatrix(const int &pose_num, const int &n,
   Eigen::MatrixXd Q_matrix = GetQMatrix(n, k);
   Eigen::MatrixXd merageQMatrix(segments_num * Q_matrix.rows(),
                                 segments_num * Q_matrix.rows());
+  merageQMatrix.setZero();
   for (int i = 0; i < merageQMatrix.rows(); i += Q_matrix.rows()) {
     merageQMatrix.block(i, i, Q_matrix.rows(), Q_matrix.rows()) = Q_matrix;
   }
@@ -100,7 +111,6 @@ Eigen::MatrixXd QpTest::GetMerageAMatrix(const int &n, const int &k,
   int N = t.size();            // todo 轨迹段数
   int rows = 4 * pose_num - 2;
   int cols = (n + 1) * N;
-  ROS_WARN_STREAM("rows : " << rows << " , cols : " << cols);
   Eigen::MatrixXd merageAMatrix(rows, cols);
   merageAMatrix.setZero();
   for (int i = 0; i < pose_num; i++) {
@@ -108,20 +118,19 @@ Eigen::MatrixXd QpTest::GetMerageAMatrix(const int &n, const int &k,
     if (i == 0) {
       // x,v,a fixed
       Eigen::MatrixXd startAMatrix(3, n + 1);
+      startAMatrix.setZero();
       startAMatrix.block(0, 0, 1, n + 1) =
           GetDerivativeMatrix(n, 0, 0).transpose(); // todo x
       startAMatrix.block(1, 0, 1, n + 1) =
           GetDerivativeMatrix(n, 1, 0).transpose(); // todo v
       startAMatrix.block(2, 0, 1, n + 1) =
           GetDerivativeMatrix(n, 2, 0).transpose(); // todo a
-      ROS_INFO_STREAM("start: \n" << startAMatrix);
       merageAMatrix.block(0, 0, 3, n + 1) = startAMatrix;
     } else if (i < (pose_num - 1)) { // mid
       // todo 1.当前点的固定在当前轨迹起点
       // todo 2.当前点x,v,a和前面一段连续(相减等于0)
       Eigen::MatrixXd MidAMatrix(4, 2 * (n + 1));
       MidAMatrix.setZero();
-      ROS_WARN_STREAM("t[i - 1] : " << t[i - 1]);
       // todo x
       MidAMatrix.block(0, n + 1, 1, n + 1) =
           GetDerivativeMatrix(n, 0, 0).transpose();
@@ -144,12 +153,12 @@ Eigen::MatrixXd QpTest::GetMerageAMatrix(const int &n, const int &k,
       MidAMatrix.block(3, n + 1, 1, n + 1) =
           -GetDerivativeMatrix(n, 2, 0).transpose();
 
-      ROS_INFO_STREAM("MidAMatrix : \n" << MidAMatrix);
       merageAMatrix.block(3 + 4 * (i - 1), (i - 1) * (n + 1), 4, 2 * (n + 1)) =
           MidAMatrix;
     } else { // end
       // x,v,a fixed
       Eigen::MatrixXd EndAMatrix(3, n + 1);
+      EndAMatrix.setZero();
       EndAMatrix.block(0, 0, 1, n + 1) =
           GetDerivativeMatrix(n, 0, t.back()).transpose(); // todo x
       EndAMatrix.block(1, 0, 1, n + 1) =
@@ -169,13 +178,11 @@ QpTest::GetMerageUMatrix(const std::vector<double> &vec,
   int pose_num = vec.size();
   Eigen::Matrix<double, Eigen::Dynamic, 1> merage_u(constraint_num_);
   merage_u.setZero();
-  ROS_ERROR_STREAM("constraint_num_ : \n" << constraint_num_);
   for (int i = 0; i < pose_num; i++) {
     if (i == 0) {
       // todo start x,v,a fixed
       Eigen::Matrix<double, 3, 1> start_u = {vec[0], start_vel, start_acc};
       merage_u.block(0, 0, 3, 1) = start_u;
-      ROS_INFO_STREAM("start_u : \n" << start_u);
     } else if (i < (pose_num - 1)) {
       // todo mid Si(0) --fixed
       // todo Si(0)) == Si-1(T) -- v1 -v2 == 0
@@ -183,12 +190,10 @@ QpTest::GetMerageUMatrix(const std::vector<double> &vec,
       // todo d2(Si(0))/dt == d2(Si-1(T))/dt -- a1 - a2 == 0
       Eigen::Matrix<double, 4, 1> mid_u = {vec[i], 0, 0, 0};
       merage_u.block(3 + 4 * (i - 1), 0, 4, 1) = mid_u;
-      ROS_INFO_STREAM("mid_u : \n" << mid_u);
     } else {
       // todo start x,v,a fixed
       Eigen::Matrix<double, 3, 1> end_u = {vec.back(), 0, 0};
       merage_u.block(constraint_num_ - 3, 0, 3, 1) = end_u;
-      ROS_INFO_STREAM("end_u : \n" << end_u);
     }
   }
   return merage_u;
@@ -316,17 +321,17 @@ void QpTest::SolverMerage() {
   Eigen::Matrix<double, Eigen::Dynamic, 1> merage_g(t_def_vec.size() *
                                                     (N_ + 1));
   merage_g.setZero();
-  ROS_INFO_STREAM("[merage Q] : " << std::endl << merageQMatrix);
+  // ROS_INFO_STREAM("[merage Q] : " << std::endl << merageQMatrix);
   // todo 微分约束矩阵和上下限  --- 经过指定点
   auto merageAMartrix = GetMerageAMatrix(N_, 3, t_def_vec);
-  ROS_INFO_STREAM("[merage_A] : \n" << merageAMartrix);
+  // ROS_INFO_STREAM("[merage_A] : \n" << merageAMartrix);
 
   // todo 创建osqp求解器
-  ROS_WARN_STREAM("NumberOfConstraints : " << merageAMartrix.rows()
-                                           << " , NumberOfVariables : "
-                                           << merageAMartrix.cols());
+  //  ROS_WARN_STREAM("NumberOfConstraints : " << merageAMartrix.rows()
+  //                                           << " , NumberOfVariables : "
+  //                                           << merageAMartrix.cols());
   OsqpEigen::Solver solver;
-  solver.settings()->setVerbosity(true);
+  solver.settings()->setVerbosity(false);
   solver.data()->setNumberOfConstraints(merageAMartrix.rows()); // todo A Row
   solver.data()->setNumberOfVariables(merageAMartrix.cols());   // todo A Col
 
@@ -339,13 +344,13 @@ void QpTest::SolverMerage() {
   Eigen::SparseMatrix<double> A_sparase = merageAMartrix.sparseView();
   auto merage_u = GetMerageUMatrix(x_vec, 0.5, 0);
   auto merage_l = merage_u;
-  ROS_INFO_STREAM("merage_u : \n" << merage_u);
+  //  ROS_INFO_STREAM("merage_u : \n" << merage_u);
   solver.data()->setLinearConstraintsMatrix(A_sparase);
   solver.data()->setLowerBound(merage_u);
   solver.data()->setUpperBound(merage_l);
 
   if (!solver.initSolver()) {
-    ROS_ERROR_STREAM("[Solver] : init failed");
+    //    ROS_ERROR_STREAM("[Solver] : init failed");
     return;
   }
 
@@ -374,32 +379,29 @@ Eigen::VectorXd QpTest::SolverMerage(const std::vector<double> &vec,
   Eigen::Matrix<double, Eigen::Dynamic, 1> merage_g(t_def_vec.size() *
                                                     (N_ + 1));
   merage_g.setZero();
-  ROS_INFO_STREAM("[merage Q] : " << std::endl << merageQMatrix);
   // todo 微分约束矩阵和上下限  --- 经过指定点
   auto merageAMartrix = GetMerageAMatrix(N_, 3, t_def_vec);
-  ROS_INFO_STREAM("[merage_A] : \n" << merageAMartrix);
-
+  // ROS_INFO_STREAM("[merage_A] : \n" << merageAMartrix);
   // todo 创建osqp求解器
   OsqpEigen::Solver solver;
-  solver.settings()->setVerbosity(true);
+//  solver.settings()->setWarmStart(false);
+  solver.settings()->setVerbosity(false);
   solver.data()->setNumberOfConstraints(merageAMartrix.rows()); // todo A Row
   solver.data()->setNumberOfVariables(merageAMartrix.cols());   // todo A Col
-
   // todo 设置H矩阵
   Eigen::SparseMatrix<double> H_hessian = merageQMatrix.sparseView();
   solver.data()->setHessianMatrix(H_hessian);
   solver.data()->setGradient(merage_g);
-
   // todo 约束条件和上下界
   Eigen::SparseMatrix<double> A_sparase = merageAMartrix.sparseView();
-  auto merage_u = GetMerageUMatrix(vec, 0.5, 0);
-  auto merage_l = merage_u;
-  ROS_INFO_STREAM("merage_u : \n" << merage_u);
+  auto merage_u = GetMerageUMatrix(vec, 0.0, 0);
+  //  auto merage_l = merage_u;
+  // ROS_INFO_STREAM("merage_u : \n" << merage_u);
   solver.data()->setLinearConstraintsMatrix(A_sparase);
   solver.data()->setLowerBound(merage_u);
-  solver.data()->setUpperBound(merage_l);
-
+  solver.data()->setUpperBound(merage_u);
   if (!solver.initSolver()) {
+    std::cout << "Q = \n" << merageQMatrix;
     ROS_ERROR_STREAM("[Solver] : init failed");
     return Eigen::VectorXd();
   }
@@ -416,7 +418,7 @@ Eigen::VectorXd QpTest::SolverMerage(const std::vector<double> &vec,
   }
 
   auto solution = solver.getSolution();
-  ROS_INFO_STREAM("[solver] : " << std::endl << solution);
+//  solver.clearSolver(); // 可选：重置内部状态
   return solution;
 }
 
@@ -427,27 +429,47 @@ nav_msgs::Path QpTest::SolverMinimumSnap(const std::vector<double> &x_vec,
   auto x_solution = SolverMerage(x_vec, t_def_vec);
   auto y_solution = SolverMerage(y_vec, t_def_vec);
 
-  ROS_INFO_STREAM("X_SOLUTION : \n" << x_solution);
-  ROS_INFO_STREAM("Y_SOLUTION : \n" << y_solution);
   // todo 将每一段的系数整理
   std::vector<Eigen::Matrix<double, Eigen::Dynamic, 1>> x_constraint_vec,
       y_constraint_vec;
 
   for (int i = 0; i < t_def_vec.size(); i++) {
 
-    x_constraint_vec.push_back(x_solution.segment(i * (N_ + 1), N_ + 1));
-    y_constraint_vec.push_back(y_solution.segment(i * (N_ + 1), N_ + 1));
+    x_constraint_vec.emplace_back(x_solution.segment(i * (N_ + 1), N_ + 1));
+    y_constraint_vec.emplace_back(y_solution.segment(i * (N_ + 1), N_ + 1));
   }
 
-  for (const auto &x_constraint : x_constraint_vec) {
-    ROS_INFO_STREAM("x : \n" << x_constraint);
+  ContinuousTimeSeries continuous_time_series(x_constraint_vec,
+                                              y_constraint_vec, t_def_vec);
+
+  nav_msgs::Path path;
+  path.header.frame_id = "map";
+  for (double continuous_t = 0.0;
+       continuous_t < continuous_time_series.getTotalT();) {
+    auto segment_t_pair = continuous_time_series.getSegmentSeries(continuous_t);
+    auto x_coefficient = x_constraint_vec[segment_t_pair.first];
+    auto y_coefficient = y_constraint_vec[segment_t_pair.first];
+
+    auto x = SolverMatrix(x_constraint_vec[segment_t_pair.first], 0,
+                          segment_t_pair.second);
+    auto y = SolverMatrix(y_constraint_vec[segment_t_pair.first], 0,
+                          segment_t_pair.second);
+    // todo Vx 和 Vy的夹角就是航向
+    auto yaw = atan2(SolverMatrix(y_constraint_vec[segment_t_pair.first], 1,
+                                  segment_t_pair.second),
+                     SolverMatrix(x_constraint_vec[segment_t_pair.first], 1,
+                                  segment_t_pair.second));
+    geometry_msgs::PoseStamped pose;
+    pose.header.frame_id = "map";
+    pose.header.stamp = ros::Time::now();
+    pose.pose.position.x = x;
+    pose.pose.position.y = y;
+    pose.pose.orientation = tf::createQuaternionMsgFromYaw(yaw);
+    path.poses.push_back(pose);
+    continuous_t += 0.05;
   }
 
-  for (const auto &y_constraint : y_constraint_vec) {
-    ROS_INFO_STREAM("y : \n" << y_constraint);
-  }
-
-  return nav_msgs::Path();
+  return path;
 }
 
 }
