@@ -27,12 +27,16 @@ namespace minimum_snap {
 
 class QpTest {
 public:
-  QpTest() { max_v_ = 0.6; };
+  QpTest() {
+    max_v_ = 0.6;
+    a_ = 0.3;
+  };
 
   ~QpTest(){};
 
   nav_msgs::Path SolverMinimumSnap(const std::vector<double> &x_vec,
-                                   const std::vector<double> &y_vec);
+                                   const std::vector<double> &y_vec,
+                                   const bool &use_uniform_mode);
 
   void SolverPro();
 
@@ -44,7 +48,8 @@ public:
                                const std::vector<double> &t_def_vec);
 
   std::vector<double> GetTimeDef(const std::vector<double> &x_vec,
-                                 const std::vector<double> &y_vec);
+                                 const std::vector<double> &y_vec,
+                                 const bool &use_uniform_mode);
   /**
    * @brief 求阶乘函数
    */
@@ -75,7 +80,8 @@ public:
    * @return
 
    */
-  double SolverMatrix(Eigen::Matrix<double, Eigen::Dynamic, 1>coefficient, const int &k, const double &t);
+  double SolverMatrix(Eigen::Matrix<double, Eigen::Dynamic, 1> coefficient,
+                      const int &k, const double &t);
 
   /**
    * @brief  获取Q矩阵
@@ -117,6 +123,7 @@ public:
 public:
   int constraint_num_;
   double max_v_;
+  double a_;
   double T; //时间
 };
 

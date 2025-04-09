@@ -6,11 +6,33 @@
 namespace minimum_snap {
 
 std::vector<double> QpTest::GetTimeDef(const std::vector<double> &x_vec,
-                                       const std::vector<double> &y_vec) {
+                                       const std::vector<double> &y_vec,
+                                       const bool &use_uniform_mode) {
+  if (use_uniform_mode) {
+    std::vector<double> t_vec;
+    for (int i = 0; i < x_vec.size() - 1; i++) {
+      auto dist = hypot(x_vec[i + 1] - x_vec[i], y_vec[i + 1] - y_vec[i]);
+      t_vec.push_back(dist / max_v_);
+      ROS_INFO_STREAM("i_t : " << i << " , " << t_vec[i]);
+    }
+    return t_vec;
+  }
+
+  double t_mid = max_v_ / a_;
+  double x_min = max_v_ * t_mid;
+
   std::vector<double> t_vec;
   for (int i = 0; i < x_vec.size() - 1; i++) {
     auto dist = hypot(x_vec[i + 1] - x_vec[i], y_vec[i + 1] - y_vec[i]);
-    t_vec.push_back(dist / max_v_);
+
+    ////todo 匀加速再匀减速
+    if (dist <= x_min) {
+      t_vec.push_back(sqrt(dist / a_));
+    } else { ////todo 匀加速再匀速再匀减速
+      double x_left = dist - x_min;
+      t_vec.push_back(2 * t_mid + (x_left / max_v_));
+    }
+    ROS_INFO_STREAM("i_t : " << i << " , " << t_vec[i]);
   }
   return t_vec;
 }
@@ -313,7 +335,7 @@ void QpTest::SolverMerage() {
   std::vector<double> x_vec = {1, 2, 0.5, 1.0};
   std::vector<double> y_vec = {1, 2, 3};
 
-  auto t_def_vec = GetTimeDef(x_vec, y_vec);
+  auto t_def_vec = GetTimeDef(x_vec, y_vec, false);
   constraint_num_ = 4 * x_vec.size() - 2;
   // todo 目标函数
   Eigen::MatrixXd merageQMatrix = GetMerageQMatrix(x_vec.size(), N_, K_);
@@ -342,7 +364,7 @@ void QpTest::SolverMerage() {
 
   // todo 约束条件和上下界
   Eigen::SparseMatrix<double> A_sparase = merageAMartrix.sparseView();
-  auto merage_u = GetMerageUMatrix(x_vec, 0.5, 0);
+  auto merage_u = GetMerageUMatrix(x_vec, 0.0, 0);
   auto merage_l = merage_u;
   //  ROS_INFO_STREAM("merage_u : \n" << merage_u);
   solver.data()->setLinearConstraintsMatrix(A_sparase);
@@ -384,7 +406,7 @@ Eigen::VectorXd QpTest::SolverMerage(const std::vector<double> &vec,
   // ROS_INFO_STREAM("[merage_A] : \n" << merageAMartrix);
   // todo 创建osqp求解器
   OsqpEigen::Solver solver;
-//  solver.settings()->setWarmStart(false);
+  //  solver.settings()->setWarmStart(false);
   solver.settings()->setVerbosity(false);
   solver.data()->setNumberOfConstraints(merageAMartrix.rows()); // todo A Row
   solver.data()->setNumberOfVariables(merageAMartrix.cols());   // todo A Col
@@ -418,14 +440,15 @@ Eigen::VectorXd QpTest::SolverMerage(const std::vector<double> &vec,
   }
 
   auto solution = solver.getSolution();
-//  solver.clearSolver(); // 可选：重置内部状态
+  //  solver.clearSolver(); // 可选：重置内部状态
   return solution;
 }
 
 nav_msgs::Path QpTest::SolverMinimumSnap(const std::vector<double> &x_vec,
-                                         const std::vector<double> &y_vec) {
+                                         const std::vector<double> &y_vec,
+                                         const bool &use_uniform_mode) {
   // todo  x,y解耦分别求解关于t的函数，再去结合同一时刻的求解xy坐标以及航向
-  auto t_def_vec = GetTimeDef(x_vec, y_vec);
+  auto t_def_vec = GetTimeDef(x_vec, y_vec, use_uniform_mode);
   auto x_solution = SolverMerage(x_vec, t_def_vec);
   auto y_solution = SolverMerage(y_vec, t_def_vec);
 
